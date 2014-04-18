@@ -43,7 +43,7 @@ var createPKR = function (bip32s) {
   for(var i=0; i<5; i++) {
     if (bip32s) {
       var b=bip32s[i];
-      w.addCopayer(b?b.extendedPublicKeyString():null);
+      w.addCopayer(b?b.getExtendedPublicKeyString():null);
     }
     else 
       w.addCopayer();
@@ -109,7 +109,8 @@ describe('TxProposals model', function() {
     var w = new TxProposals({
       networkName: config.networkName,
     });
-    var pkr=createPKR([priv.getBIP32()]);
+    var start = new Date().getTime();
+    var pkr=createPKR([priv]);
     var ts = Date.now();
     var isChange=0; 
     var index=0; 
@@ -149,7 +150,7 @@ describe('TxProposals model', function() {
     var ts = Date.now();
     var isChange=0; 
     var index=0; 
-    var pkr = createPKR([priv.getBIP32()]);
+    var pkr = createPKR([priv]);
     var opts = {remainderOut: { address: pkr.generateAddress(true).toString() }};
 
 
@@ -224,7 +225,7 @@ var _dumpChunks = function (scriptSig, label) {
    var ts = Date.now();
     var isChange=0; 
     var index=0; 
-    var pkr = createPKR([priv.getBIP32(), priv2.getBIP32()]);
+    var pkr = createPKR([priv, priv2]);
     var opts = {remainderOut: { address: pkr.generateAddress(true).toString() }};
 
     var w = new TxProposals({
@@ -324,7 +325,7 @@ var _dumpChunks = function (scriptSig, label) {
    var ts = Date.now();
     var isChange=0; 
     var index=0; 
-    var pkr = createPKR([priv.getBIP32(), priv2.getBIP32(),  priv3.getBIP32() ]);
+    var pkr = createPKR([priv, priv2,  priv3]);
     var opts = {remainderOut: { address: pkr.generateAddress(true).toString() }};
 
     var w = new TxProposals({
@@ -415,7 +416,7 @@ var _dumpChunks = function (scriptSig, label) {
   it('#toObj #fromObj roundtrip', function () {
 
     var priv = new PrivateKey(config);
-    var pkr = createPKR([priv.getBIP32()]);
+    var pkr = createPKR([priv]);
     var w = new TxProposals({
       walletId: 'qwerty',
       networkName: config.networkName,

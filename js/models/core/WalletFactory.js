@@ -44,15 +44,17 @@ WalletFactory.prototype._checkRead = function(walletId) {
     s.get(walletId, 'opts') &&
     s.get(walletId, 'privateKey')
   ;
-  return ret;
+  return ret?true:false;
 };
 
 WalletFactory.prototype.read = function(walletId) {
-  if (! this._checkRead(walletId)) return false;
+  if (! this._checkRead(walletId))
+    return false;
 
   var s = this.storage;
   var opts = s.get(walletId, 'opts');
 
+  opts.id = walletId;
   opts.publicKeyRing = new PublicKeyRing.fromObj(s.get(walletId, 'publicKeyRing'));
   opts.txProposals   = new TxProposals.fromObj(s.get(walletId, 'txProposals'));
   opts.privateKey    = new PrivateKey.fromObj(s.get(walletId, 'privateKey'));
@@ -67,7 +69,7 @@ WalletFactory.prototype.read = function(walletId) {
   // JIC: Add our key
   try {
     w.publicKeyRing.addCopayer(
-      w.privateKey.getBIP32().extendedPublicKeyString()
+      w.privateKey.getExtendedPublicKeyString()
     );
   } catch (e) {
     this.log('NOT NECCESARY AN ERROR:', e); //TODO
@@ -92,7 +94,7 @@ WalletFactory.prototype.create = function(opts) {
     requiredCopayers: requiredCopayers,
     totalCopayers: totalCopayers,
   });
-  opts.publicKeyRing.addCopayer(opts.privateKey.getBIP32().extendedPublicKeyString());
+  opts.publicKeyRing.addCopayer(opts.privateKey.getExtendedPublicKeyString());
   this.log('\t### PublicKeyRing Initialized');
 
   opts.txProposals = opts.txProposals || new TxProposals({
@@ -108,13 +110,16 @@ WalletFactory.prototype.create = function(opts) {
   opts.spendUnconfirmed = opts.spendUnconfirmed || this.walletDefaults.spendUnconfirmed;
   opts.requiredCopayers = requiredCopayers;
   opts.totalCopayers = totalCopayers;
-  var w   = new Wallet(opts);
+  var w = new Wallet(opts);
   w.store();
   return w;
 };
 
 WalletFactory.prototype.open = function(walletId) {
-  var w = this.read(walletId) || this.create({id: walletId});
+  var w = this.read(walletId) || this.create({
+    id: walletId,
+    verbose: this.verbose,
+  });
   return w;
 };
 
@@ -134,7 +139,7 @@ WalletFactory.prototype.openRemote = function(peedId) {
     requiredCopayers: requiredCopayers,
     totalCopayers: totalCopayers,
   });
-  opts.publicKeyRing.addCopayer(opts.privateKey.getBIP32().extendedPublicKeyString());
+  opts.publicKeyRing.addCopayer(opts.privateKey.getExtendedPublicKeyString());
   this.log('\t### PublicKeyRing Initialized');
 
   opts.txProposals = opts.txProposals || new TxProposals({
@@ -145,12 +150,14 @@ WalletFactory.prototype.openRemote = function(peedId) {
   opts.storage = this.storage;
   opts.network = this.network;
   opts.blockchain = this.blockchain;
-  opts.spendUnconfirmed = opts.spendUnconfirmed || this.walletDefaults.spendUnconfirmed;
+
+  opts.spendUnconfirmed = typeof opts.spendUnconfirmed === undefined 
+      ?this.walletDefaults.spendUnconfirmed :   opts.spendUnconfirmed;
+
   opts.requiredCopayers = requiredCopayers;
   opts.totalCopayers = totalCopayers;
   var w   = new Wallet(opts);
   w.store();
-  this.addWalletId(w.id);
   return w;
 };
 
@@ -168,7 +175,7 @@ WalletFactory.prototype.connectTo = function(peerId, cb) {
   self.network.start(function() {
     self.network.connectTo(peerId)
     self.network.on('walletId', function(walletId) {
-console.log('[WalletFactory.js.187]'); //TODO
+      self.log('Opening walletId:' + walletId);
       return cb(self.open(walletId));
     });
   });

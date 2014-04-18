@@ -1,34 +1,51 @@
 'use strict';
 
 angular.module('copay.transactions').controller('TransactionsController',
-  function($scope, $rootScope, $location) {
+  function($scope, $rootScope, $location, Socket, controllerUtils) {
     $scope.title = 'Transactions';
 
     $scope.oneAtATime = true;
 
-    if (!$rootScope.wallet.id) {
+    var _updateTxs = function() {
+      var w   =$rootScope.wallet;
+      var inT = w.getTxProposals();
+      var ts  = [];
+
+      inT.forEach(function(i){
+        var b   = i.txp.builder;
+        var tx  = b.build();
+        var one = {
+          valueOutSat: b.valueOutSat,
+          feeSat: b.feeSat,
+        };
+        var outs = [];
+        var bitcore = require('bitcore');
+        tx.outs.forEach(function(o) {
+          var s = o.getScript();
+          var aStr = bitcore.Address.fromScript(s, config.networkName).toString();
+          if (!w.addressIsOwn(aStr))
+            outs.push({address: aStr, value: bitcore.util.valueToBigInt(o.getValue())});
+        });
+        one.outs = outs;
+        ts.push(one);
+      });
+      $scope.txs = ts;
+    };
+
+
+    if (!$rootScope.wallet || !$rootScope.wallet.id) {
       $location.path('signin');
     }
-
-    $scope.txsinput = [
-    {
-      fromAddr: "n3zUqNR7Bbbc4zJhPVj1vG2Lx66K3Xhzvb",
-      toAddr: "msvv2mDfE298s7boXwALq4Dqv77K3TWRZ1",
-      amount: 23.9982
-    },
-    {
-      fromAddr: "my9wnLwwUrwpNfEgSrWY62ymEGf1edKf4J",
-      toAddr: "monCusNiDuptf68rtr58hEjKpJt6cW6zwS",
-      amount: 2.22
+    else {
+      _updateTxs();
+      var socket = Socket($scope);
+      socket.on('connect', controllerUtils.handleTransactionByAddress($scope));
     }
-    ];
-
-    $scope.txsoutput = $rootScope.wallet.getTxProposals();
 
     $scope.sign = function (ntxid) {
       var w = $rootScope.wallet;
       var ret = w.sign(ntxid);
-console.log('[transactions.js.28:ret:]',ret); //TODO
-      $scope.txsoutput = $rootScope.wallet.getTxProposals();
+      $rootScope.flashMessage = {type:'success', message: 'Transactions SEND! : ' + ret};
+      _updateTxs();
     };
   });

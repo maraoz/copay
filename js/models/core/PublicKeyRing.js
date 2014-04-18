@@ -25,10 +25,12 @@ function PublicKeyRing(opts) {
   this.requiredCopayers = opts.requiredCopayers || 3;
   this.totalCopayers = opts.totalCopayers || 5;
 
-  this.copayersBIP32 = [];
+  this.copayersBIP32 = opts.copayersBIP32 || [];
 
-  this.changeAddressIndex=0;
-  this.addressIndex=0;
+  this.changeAddressIndex= opts.changeAddressIndex || 0;
+  this.addressIndex= opts.addressIndex || 0;
+
+  this.publicKeysCache = opts.publicKeysCache || {};
 }
 
 /*
@@ -40,33 +42,18 @@ function PublicKeyRing(opts) {
  *
  */
 
-PublicKeyRing.PublicBranch = function (index) {
-  return 'm/0/'+index;
-};
-
-PublicKeyRing.ChangeBranch = function (index) {
-  return 'm/1/'+index;
+PublicKeyRing.Branch = function (index, isChange) {
+  return 'm/'+(isChange?1:0)+'/'+index;
 };
 
 PublicKeyRing.fromObj = function (data) {
-  if (!data.ts) {
+  if (data instanceof PublicKeyRing) {
     throw new Error('bad data format: Did you use .toObj()?');
   }
-  var config = { networkName: data.networkName || 'livenet' };
-
-  var w = new PublicKeyRing(config);
-
-  w.walletId           = data.walletId;
-  w.requiredCopayers   = data.requiredCopayers;
-  w.totalCopayers      = data.totalCopayers;
-  w.addressIndex       = data.addressIndex;
-  w.changeAddressIndex = data.changeAddressIndex;
-  w.copayersBIP32      = data.copayersExtPubKeys.map( function (pk) {
+  data.copayersBIP32 = data.copayersExtPubKeys.map(function(pk) {
     return new BIP32(pk);
   });
-
-  w.ts = data.ts;
-  return w;
+  return new PublicKeyRing(data);
 };
 
 PublicKeyRing.prototype.toObj = function() {
@@ -81,7 +68,7 @@ PublicKeyRing.prototype.toObj = function() {
     copayersExtPubKeys: this.copayersBIP32.map( function (b) { 
       return b.extendedPublicKeyString(); 
     }),
-    ts: parseInt(Date.now() / 1000),
+    publicKeysCache: this.publicKeysCache
   };
 };
 
@@ -93,7 +80,6 @@ PublicKeyRing.prototype.serialize = function () {
 PublicKeyRing.prototype.registeredCopayers = function () {
   return this.copayersBIP32.length;
 };
-
 
 
 PublicKeyRing.prototype.isComplete = function () {
@@ -134,12 +120,18 @@ PublicKeyRing.prototype.addCopayer = function (newEpk) {
 PublicKeyRing.prototype.getPubKeys = function (index, isChange) {
   this._checkKeys();
 
-  var pubKeys = [];
-  var l = this.copayersBIP32.length;
-  for(var i=0; i<l; i++) {
-    var path = isChange ? PublicKeyRing.ChangeBranch(index) : PublicKeyRing.PublicBranch(index); 
-    var bip32 = this.copayersBIP32[i].derive(path);
-    pubKeys[i] = bip32.eckey.public;
+  var path = PublicKeyRing.Branch(index, isChange); 
+  var pubKeys = this.publicKeysCache[path];
+  if (!pubKeys) {
+    pubKeys = [];
+    var l = this.copayersBIP32.length;
+    for(var i=0; i<l; i++) {
+      var bip32 = this.copayersBIP32[i].derive(path);
+      pubKeys[i] = bip32.eckey.public;
+    }
+    this.publicKeysCache[path] = pubKeys.map(function(pk){return pk.toString('hex')});
+  } else {
+    pubKeys = pubKeys.map(function(s){return new Buffer(s,'hex')});
   }
 
   return pubKeys;
@@ -164,12 +156,8 @@ PublicKeyRing.prototype.getRedeemScript = function (index, isChange) {
 
 PublicKeyRing.prototype.getAddress = function (index, isChange) {
   this._checkIndexRange(index, isChange);
-
   var script  = this.getRedeemScript(index,isChange);
-  var hash    = coinUtil.sha256ripe160(script.getBuffer());
-  var version = this.network.P2SHVersion;
-  var addr    = new Address(version, hash);
-  return addr;
+  return Address.fromScript(script, this.network.name);
 };
 
 PublicKeyRing.prototype.getScriptPubKeyHex = function (index, isChange) {
@@ -185,24 +173,27 @@ PublicKeyRing.prototype.generateAddress = function(isChange) {
 
   var ret =  
     this.getAddress(isChange ? this.changeAddressIndex : this.addressIndex, isChange);
-  if (isChange) 
+  if (isChange) {
     this.changeAddressIndex++;
-  else 
+  } else { 
     this.addressIndex++;
+  }
 
   return ret;
 
 };
 
-PublicKeyRing.prototype.getAddresses = function() {
+PublicKeyRing.prototype.getAddresses = function(onlyMain) {
   var ret = [];
-
-  for (var i=0; i<this.changeAddressIndex; i++) {
-    ret.push(this.getAddress(i,true));
-  }
 
   for (var i=0; i<this.addressIndex; i++) {
     ret.push(this.getAddress(i,false));
+  }
+
+  if (!onlyMain) {
+    for (var i=0; i<this.changeAddressIndex; i++) {
+      ret.push(this.getAddress(i,true));
+    }
   }
   return ret;
 };
