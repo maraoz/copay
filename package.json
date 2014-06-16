@@ -28,7 +28,6 @@
   "homepage": "https://github.com/bitpay/copay",
   "testling": {
     "html": "test/index.testling.html",
-    "harness": "mocha",
     "browsers": [
       "ie/6..latest",
       "chrome/22..latest",
